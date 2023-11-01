@@ -1,0 +1,67 @@
+From ea1e86cfdf26a330e58ea377a80273de7110011b Mon Sep 17 00:00:00 2001
+From: Tony Cook <tony@develop-help.com>
+Date: Wed, 21 Aug 2019 11:37:58 +1000
+Subject: [PATCH] disallow vstring magic strings over 2GB-1
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+On reads this could result in buffer overflows, so avoid writing
+such large vstrings to avoid causing problems for older Storable.
+
+Since we no longer write such large vstrings, we don't want to accept
+them.
+
+I doubt that restricting versions strings to under 2GB-1 will have
+a practical effect on downstream users.
+
+fixes #17306
+
+Signed-off-by: Petr Písař <ppisar@redhat.com>
+---
+ dist/Storable/Storable.xs | 19 ++++++++++++++++---
+ 1 file changed, 16 insertions(+), 3 deletions(-)
+
+diff --git a/dist/Storable/Storable.xs b/dist/Storable/Storable.xs
+index c2335680ab..d27ac58012 100644
+--- a/dist/Storable/Storable.xs
++++ b/dist/Storable/Storable.xs
+@@ -2628,6 +2628,12 @@ static int store_scalar(pTHX_ stcxt_t *cxt, SV *sv)
+             /* The macro passes this by address, not value, and a lot of
+                called code assumes that it's 32 bits without checking.  */
+             const SSize_t len = mg->mg_len;
++            /* we no longer accept vstrings over I32_SIZE-1, so don't emit
++               them, also, older Storables handle them badly.
++            */
++            if (len >= I32_MAX) {
++                CROAK(("vstring too large to freeze"));
++            }
+             STORE_PV_LEN((const char *)mg->mg_ptr,
+                          len, SX_VSTRING, SX_LVSTRING);
+         }
+@@ -5937,12 +5943,19 @@ static SV *retrieve_lvstring(pTHX_ stcxt_t *cxt, const char *cname)
+ {
+ #ifdef SvVOK
+     char *s;
+-    I32 len;
++    U32 len;
+     SV *sv;
+ 
+     RLEN(len);
+-    TRACEME(("retrieve_lvstring (#%d), len = %" IVdf,
+-             (int)cxt->tagnum, (IV)len));
++    TRACEME(("retrieve_lvstring (#%d), len = %" UVuf,
++             (int)cxt->tagnum, (UV)len));
++
++    /* Since we'll no longer produce such large vstrings, reject them
++       here too.
++    */
++    if (len >= I32_MAX) {
++        CROAK(("vstring too large to fetch"));
++    }
+ 
+     New(10003, s, len+1, char);
+     SAFEPVREAD(s, len, s);
+-- 
+2.21.0
+
