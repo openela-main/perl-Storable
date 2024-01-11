@@ -1,0 +1,53 @@
+From f7724052d1b8b75339f5ec2cc3d5b35ca5d130b5 Mon Sep 17 00:00:00 2001
+From: Tony Cook <tony@develop-help.com>
+Date: Wed, 7 Aug 2019 11:13:53 +1000
+Subject: [PATCH] Storable: make count large enough
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+AvARRAY() could be very large, and we check for that at line 3807,
+but int was (potentially) too small to make that comparison
+meaningful.
+
+CID 174681.
+
+Signed-off-by: Petr Písař <ppisar@redhat.com>
+---
+ dist/Storable/Storable.xs | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/dist/Storable/Storable.xs b/dist/Storable/Storable.xs
+index 6a45d8adf2..d75125b839 100644
+--- a/dist/Storable/Storable.xs
++++ b/dist/Storable/Storable.xs
+@@ -3662,7 +3662,7 @@ static int store_hook(
+     SV *ref;
+     AV *av;
+     SV **ary;
+-    int count;			/* really len3 + 1 */
++    IV count;			/* really len3 + 1 */
+     unsigned char flags;
+     char *pv;
+     int i;
+@@ -3752,7 +3752,7 @@ static int store_hook(
+     SvREFCNT_dec(ref);			/* Reclaim temporary reference */
+ 
+     count = AvFILLp(av) + 1;
+-    TRACEME(("store_hook, array holds %d items", count));
++    TRACEME(("store_hook, array holds %" IVdf " items", count));
+ 
+     /*
+      * If they return an empty list, it means they wish to ignore the
+@@ -3986,7 +3986,7 @@ static int store_hook(
+      */
+ 
+     TRACEME(("SX_HOOK (recursed=%d) flags=0x%x "
+-             "class=%" IVdf " len=%" IVdf " len2=%" IVdf " len3=%d",
++             "class=%" IVdf " len=%" IVdf " len2=%" IVdf " len3=%" IVdf,
+              recursed, flags, (IV)classnum, (IV)len, (IV)len2, count-1));
+ 
+     /* SX_HOOK <flags> [<extra>] */
+-- 
+2.20.1
+

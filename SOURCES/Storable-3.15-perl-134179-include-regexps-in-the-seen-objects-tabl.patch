@@ -1,0 +1,92 @@
+From 16f2ddb794883529d5a3ad8326974a07aae7e567 Mon Sep 17 00:00:00 2001
+From: Tony Cook <tony@develop-help.com>
+Date: Mon, 10 Jun 2019 10:17:20 +1000
+Subject: [PATCH] (perl #134179) include regexps in the seen objects table on
+ retrieve
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Also, bless the regexp object, so freezing/thawing bless qr//, "Foo"
+returns a "Foo" blesses regexp.
+
+Signed-off-by: Petr Písař <ppisar@redhat.com>
+---
+ dist/Storable/Storable.xs |  5 +++--
+ dist/Storable/t/regexp.t  |  4 +++-
+ dist/Storable/t/weak.t    | 10 +++++++++-
+ 3 files changed, 15 insertions(+), 4 deletions(-)
+
+diff --git a/dist/Storable/Storable.xs b/dist/Storable/Storable.xs
+index ed729c94a6..6a45d8adf2 100644
+--- a/dist/Storable/Storable.xs
++++ b/dist/Storable/Storable.xs
+@@ -6808,8 +6808,7 @@ static SV *retrieve_regexp(pTHX_ stcxt_t *cxt, const char *cname) {
+     SV *sv;
+     dSP;
+     I32 count;
+-
+-    PERL_UNUSED_ARG(cname);
++    HV *stash;
+ 
+     ENTER;
+     SAVETMPS;
+@@ -6857,6 +6856,8 @@ static SV *retrieve_regexp(pTHX_ stcxt_t *cxt, const char *cname) {
+ 
+     sv = SvRV(re_ref);
+     SvREFCNT_inc(sv);
++    stash = cname ? gv_stashpv(cname, GV_ADD) : 0;
++    SEEN_NN(sv, stash, 0);
+     
+     FREETMPS;
+     LEAVE;
+diff --git a/dist/Storable/t/regexp.t b/dist/Storable/t/regexp.t
+index acf28cfec6..e7c6c7e94a 100644
+--- a/dist/Storable/t/regexp.t
++++ b/dist/Storable/t/regexp.t
+@@ -37,7 +37,7 @@ while (<DATA>) {
+     }
+ }
+ 
+-plan tests => 9 + 3*scalar(@tests);
++plan tests => 10 + 3*scalar(@tests);
+ 
+ SKIP:
+ {
+@@ -75,6 +75,8 @@ SKIP:
+     ok(!eval { dclone($re) }, "should fail to clone, even with use re 'eval'");
+ }
+ 
++is(ref(dclone(bless qr//, "Foo")), "Foo", "check reblessed regexps");
++
+ for my $test (@tests) {
+     my ($code, $not, $match, $matchc, $name) = @$test;
+     my $qr = eval $code;
+diff --git a/dist/Storable/t/weak.t b/dist/Storable/t/weak.t
+index 220c70160f..48752fbec4 100644
+--- a/dist/Storable/t/weak.t
++++ b/dist/Storable/t/weak.t
+@@ -29,7 +29,7 @@ sub BEGIN {
+ }
+ 
+ use Test::More 'no_plan';
+-use Storable qw (store retrieve freeze thaw nstore nfreeze);
++use Storable qw (store retrieve freeze thaw nstore nfreeze dclone);
+ require 'testlib.pl';
+ our $file;
+ use strict;
+@@ -143,3 +143,11 @@ foreach (@tests) {
+   $stored = nfreeze $input;
+   tester($stored, \&freeze_and_thaw, $testsub, 'network string');
+ }
++
++{
++    # [perl #134179] sv_upgrade from type 7 down to type 1
++    my $foo = [qr//,[]];
++    weaken($foo->[1][0][0] = $foo->[1]);
++    my $out = dclone($foo); # croaked here
++    is_deeply($out, $foo, "check they match");
++}
+-- 
+2.20.1
+
